@@ -1,0 +1,172 @@
+import express from "express";
+import dotenv from "dotenv";
+dotenv.config();
+
+import { connectMongo } from "../config/mongo";
+import { notificationQueue } from "../queue/notifcationQueue";
+import { analyticsQueue } from "../queue/analyticsQueue";
+import { NotificationModel } from "../models/Notification";
+
+const app = express();
+app.use(express.json());
+const PORT = process.env.PORT || 3000;
+
+app.get("/health", (req, res) => {
+  res.send("server is healthy");
+});
+
+app.post("/notifications", async (req, res) => {
+  try {
+    const { to, channel, body, delayMs } = req.body;
+    if (!to || !channel || !body) {
+      return res.status(400).json({
+        error: "to, channel and body are required",
+      });
+    }
+
+    const allowedChannels = ["email", "sms", "push"];
+    if (!allowedChannels.includes(channel)) {
+      return res.status(400).json({
+        error: "Invalid channel",
+      });
+    }
+
+    // Add job
+    const job = await notificationQueue.add(
+      "send-notification",
+      {
+        to,
+        channel,
+        body,
+      },
+      {
+        delay: delayMs || 0,
+      },
+    );
+
+    await NotificationModel.create({
+      jobId: String(job.id),
+      to,
+      channel,
+      body,
+      status: "queued",
+      attempts: [],
+    });
+
+    return res.status(202).json({
+      message: "Notification queued",
+      jobId: job.id,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+});
+
+app.get("/notifications/:jobId", async (req, res) => {
+  try {
+    const notification = await NotificationModel.findOne({
+      jobId: req.params.jobId,
+    });
+
+    if (!notification) {
+      return res.status(404).json({
+        error: "Notification not found",
+      });
+    }
+    return res.json(notification);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+});
+
+app.post("/notifications/repeat", async (req, res) => {
+  try {
+    const { to, channel, body, pattern } = req.body;
+
+    if (!to || !channel || !body || !pattern) {
+      return res.status(400).json({
+        error: "to, channel, body, and pattern (cron) are required",
+      });
+    }
+
+    const allowedChannels = ["email", "sms", "push"];
+    if (!allowedChannels.includes(channel)) {
+      return res.status(400).json({
+        error: "Invalid channel",
+      });
+    }
+
+    // Add repeatable job
+    const repeatableJob = await notificationQueue.add(
+      "send-notification",
+      {
+        to,
+        channel,
+        body,
+      },
+      {
+        repeat: {
+          pattern,
+        },
+        jobId: `repeatable-${Date.now()}`,
+      },
+    );
+
+    return res.status(202).json({
+      message: "Repeatable job created",
+      jobId: repeatableJob.id,
+      pattern,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+});
+
+app.get("/admin/repeatable", async (req, res) => {
+  try {
+    const repeatableJobs = await notificationQueue.getRepeatableJobs();
+    return res.json(repeatableJobs);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+});
+
+app.delete("/admin/repeatable/:jobKey", async (req, res) => {
+  try {
+    await notificationQueue.removeRepeatableByKey(req.params.jobKey);
+    return res.json({
+      message: "Repeatable job removed",
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+});
+
+async function startServer() {
+  try {
+    await connectMongo();
+    app.listen(PORT, () => {
+      console.log(
+        `server running on ${PORT},check health on http://localhost:${PORT}/health`,
+      );
+    });
+  } catch (error) {
+    console.error("Failed to start server", error);
+  }
+}
+startServer();
