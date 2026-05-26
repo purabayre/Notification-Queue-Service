@@ -500,6 +500,16 @@ src/
 - [ ] Add job flows (parent/child relationships)
 - [ ] Write integration tests
 
+## Daily Digest
+
+- **What:** A repeatable job `send-digest` is scheduled at server startup to emit a daily digest of notifications.
+- **Defaults:** `DIGEST_CRON` defaults to `0 0 * * *` (every day at midnight). `DIGEST_TO` defaults to `admin@example.com`.
+- **How it's scheduled:** The API calls a scheduler on startup which adds a repeatable job to the `notifications` queue.
+- **Manual control:** You can create or remove repeatable jobs via the API endpoints:
+  - `POST /notifications/repeat` — create a repeatable notification (accepts a `pattern` cron string).
+  - `GET /admin/repeatable` — list repeatable jobs.
+  - `DELETE /admin/repeatable/:jobKey` — remove a repeatable job by key.
+
 ## Notes for Learning
 
 1. **Don't read tutorials first.** Read the official docs:

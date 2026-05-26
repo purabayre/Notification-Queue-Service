@@ -12,6 +12,30 @@ async function startWorker() {
   const worker = new Worker(
     "notifications",
     async (job: Job) => {
+      // Handle repeatable daily digest job separately
+      if (job.name === "send-digest") {
+        console.log(`Processing digest job ${job.id}`);
+        const to = process.env.DIGEST_TO || "admin@example.com";
+        const channel = "email";
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const items = await NotificationModel.find({
+          createdAt: { $gte: since },
+        }).lean();
+        const lines = items.map(
+          (n: any) => `${n.to} [${n.channel}] ${n.status}: ${n.body}`,
+        );
+        const body =
+          `Daily digest: ${items.length} notifications\n\n` + lines.join("\n");
+        await fakeSender(to, channel, body);
+        await analyticsQueue.add(
+          "log-digest",
+          { count: items.length },
+          { jobId: `analytics-digest-${job.id}` },
+        );
+        console.log(`Digest job ${job.id} completed`);
+        return;
+      }
+
       console.log(`Processing job ${job.id}`);
       const notification = await NotificationModel.findOne({
         jobId: String(job.id),
@@ -33,18 +57,6 @@ async function startWorker() {
         });
         notification.status = "sent";
         await notification.save();
-
-        // Create child analytics job
-        await analyticsQueue.add(
-          "log-success",
-          {
-            notificationJobId: String(job.id),
-            status: "sent",
-          },
-          {
-            jobId: `analytics-${job.id}-success`,
-          },
-        );
 
         console.log(`Job ${job.id} completed`);
       } catch (error) {

@@ -3,13 +3,30 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import { connectMongo } from "../config/mongo";
-import { notificationQueue } from "../queue/notifcationQueue";
+import { flowProducer, notificationQueue } from "../queue/notifcationQueue";
 import { analyticsQueue } from "../queue/analyticsQueue";
+import { scheduleDailyDigest } from "../queue/digestScheduler";
 import { NotificationModel } from "../models/Notification";
+import { ExpressAdapter } from "@bull-board/express";
+import { createBullBoard } from "@bull-board/api";
+import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
+
+const serverAdapter = new ExpressAdapter();
+serverAdapter.setBasePath("/admin/queues");
+
+createBullBoard({
+  queues: [
+    new BullMQAdapter(notificationQueue),
+    new BullMQAdapter(analyticsQueue),
+  ],
+  serverAdapter,
+});
+
+app.use("/admin/queues", serverAdapter.getRouter());
 
 app.get("/health", (req, res) => {
   res.send("server is healthy");
@@ -31,21 +48,47 @@ app.post("/notifications", async (req, res) => {
       });
     }
 
-    // Add job
-    const job = await notificationQueue.add(
-      "send-notification",
-      {
-        to,
-        channel,
-        body,
+    const notificationJobId = `notification-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+
+    const flow = await flowProducer.add({
+      name: "log-success",
+      queueName: "analytics",
+      data: {
+        notificationJobId,
+        status: "sent",
       },
-      {
-        delay: delayMs || 0,
+      opts: {
+        removeOnComplete: false,
+        removeOnFail: false,
       },
-    );
+      children: [
+        {
+          name: "send-notification",
+          queueName: "notifications",
+          data: {
+            to,
+            channel,
+            body,
+          },
+          opts: {
+            jobId: notificationJobId,
+            delay: delayMs || 0,
+            attempts: 3,
+            backoff: {
+              type: "exponential",
+              delay: 2000,
+            },
+            removeOnComplete: false,
+            removeOnFail: false,
+          },
+        },
+      ],
+    });
 
     await NotificationModel.create({
-      jobId: String(job.id),
+      jobId: notificationJobId,
       to,
       channel,
       body,
@@ -55,7 +98,7 @@ app.post("/notifications", async (req, res) => {
 
     return res.status(202).json({
       message: "Notification queued",
-      jobId: job.id,
+      jobId: notificationJobId,
     });
   } catch (error) {
     console.error(error);
@@ -101,7 +144,6 @@ app.post("/notifications/repeat", async (req, res) => {
         error: "Invalid channel",
       });
     }
-
     // Add repeatable job
     const repeatableJob = await notificationQueue.add(
       "send-notification",
@@ -117,7 +159,6 @@ app.post("/notifications/repeat", async (req, res) => {
         jobId: `repeatable-${Date.now()}`,
       },
     );
-
     return res.status(202).json({
       message: "Repeatable job created",
       jobId: repeatableJob.id,
@@ -160,6 +201,8 @@ app.delete("/admin/repeatable/:jobKey", async (req, res) => {
 async function startServer() {
   try {
     await connectMongo();
+    // Schedule daily digest repeatable job
+    await scheduleDailyDigest();
     app.listen(PORT, () => {
       console.log(
         `server running on ${PORT},check health on http://localhost:${PORT}/health`,

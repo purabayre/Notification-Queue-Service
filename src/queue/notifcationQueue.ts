@@ -1,4 +1,4 @@
-import { Queue } from "bullmq";
+import { FlowProducer, Queue } from "bullmq";
 import { redisConnection } from "../config/redis";
 
 export const notificationQueue = new Queue("notifications", {
@@ -15,4 +15,8 @@ export const notificationQueue = new Queue("notifications", {
     removeOnComplete: false,
     removeOnFail: false,
   },
+});
+
+export const flowProducer = new FlowProducer({
+  connection: redisConnection,
 });
