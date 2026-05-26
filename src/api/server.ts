@@ -201,8 +201,8 @@ app.delete("/admin/repeatable/:jobKey", async (req, res) => {
 async function startServer() {
   try {
     await connectMongo();
-    // Schedule daily digest repeatable job
-    await scheduleDailyDigest();
+
+    // await scheduleDailyDigest();
     app.listen(PORT, () => {
       console.log(
         `server running on ${PORT},check health on http://localhost:${PORT}/health`,

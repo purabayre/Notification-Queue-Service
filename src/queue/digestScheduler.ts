@@ -1,22 +1,33 @@
 import { notificationQueue } from "../queue/notifcationQueue";
 
 export async function scheduleDailyDigest() {
-  const pattern = process.env.DIGEST_CRON || "0 0 * * *";
+  const pattern = "0 */2 * * *";
 
   try {
+    // Remove old repeatable jobs
+    const repeatableJobs = await notificationQueue.getRepeatableJobs();
+
+    for (const job of repeatableJobs) {
+      if (job.name === "send-digest") {
+        await notificationQueue.removeRepeatableByKey(job.key);
+        console.log(`Removed old repeat job: ${job.key}`);
+      }
+    }
+
+    // Add new repeatable job
     await notificationQueue.add(
       "send-digest",
       {},
       {
         repeat: {
-          pattern: pattern,
+          pattern,
         },
         jobId: "daily-digest",
       },
     );
 
-    console.log(`Scheduled digest job every 2 hour with cron '${pattern}'`);
+    console.log(`Scheduled digest job every 2 hours with cron '${pattern}'`);
   } catch (err) {
-    console.error("Failed to schedule daily digest", err);
+    console.log("Failed to schedule daily digest", err);
   }
 }

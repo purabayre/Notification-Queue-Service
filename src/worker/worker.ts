@@ -15,7 +15,7 @@ async function startWorker() {
       // Handle repeatable daily digest job separately
       if (job.name === "send-digest") {
         console.log(`Processing digest job ${job.id}`);
-        const to = process.env.DIGEST_TO || "admin@example.com";
+        const to = "admin@admin.com";
         const channel = "email";
         const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const items = await NotificationModel.find({
