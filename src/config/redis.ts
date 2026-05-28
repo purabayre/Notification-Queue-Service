@@ -9,6 +9,3 @@ export const redisConnection = new Redis({
 
   maxRetriesPerRequest: null,
 });
-// console.log(
-//   `Connected to redis at ${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`,
-// );

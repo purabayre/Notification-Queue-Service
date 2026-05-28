@@ -35,7 +35,6 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "^25.9.1",
     "@types/supertest": "^7.2.0",
-    "axios": "^1.16.1",
     "jest": "^30.4.2",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.11",

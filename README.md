@@ -316,9 +316,10 @@ Final response (success or failure):
 
 ### Retry Configuration
 
-Located in [src/queue/notifcationQueue.ts](src/queue/notifcationQueue.ts):
+Located in [src/queue/notificationQueue.ts](src/queue/notificationQueue.ts):
 
 ```typescript
+
 defaultJobOptions: {
   attempts: 3,           // Total number of attempts (1 initial + 2 retries)
   backoff: {

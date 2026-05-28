@@ -1,7 +1,8 @@
-import { notificationQueue } from "../queue/notifcationQueue";
+import { notificationQueue } from "./notificationQueue";
 
 export async function scheduleDailyDigest() {
-  const pattern = "0 */2 * * *";
+  // M2: configurable cron (default daily at midnight)
+  const pattern = process.env.DIGEST_CRON || "0 0 * * *";
 
   try {
     // Remove old repeatable jobs

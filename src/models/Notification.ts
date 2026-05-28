@@ -16,17 +16,25 @@ const NotificationSchema = new mongoose.Schema(
     jobId: {
       type: String,
       required: true,
+      unique: true,
       index: true,
     },
 
-    to: String,
+    to: {
+      type: String,
+      maxlength: 2000,
+    },
 
     channel: {
       type: String,
       enum: ["email", "sms", "push"],
     },
 
-    body: String,
+    body: {
+      type: String,
+      // Prevent unbounded payloads from being stored if API validation is bypassed.
+      maxlength: 10000,
+    },
 
     status: {
       type: String,

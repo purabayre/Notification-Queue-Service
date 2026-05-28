@@ -9,16 +9,18 @@ import {
   expect,
 } from "@jest/globals";
 
-import { notificationQueue } from "../queue/notifcationQueue";
+import { notificationQueue } from "../queue/notificationQueue";
 import { NotificationModel } from "../models/Notification";
 import { redisConnection } from "../config/redis";
+import { createTestWorker } from "./workerBootstrap";
 
 dotenv.config();
 
 // Helper: Wait for a job to complete with timeout
 async function waitForJobCompletion(
   jobId: string,
-  maxWaitMs: number = 15000,
+  maxWaitMs: number = 25000,
+
   pollIntervalMs: number = 500,
 ): Promise<{
   status: string;
@@ -47,14 +49,15 @@ async function waitForJobCompletion(
 }
 
 describe("BullMQ Notification Queue Integration Tests", () => {
+  let worker: any;
+
   beforeAll(async () => {
     if (!process.env.MONGO_URI) {
       throw new Error("MONGO_URI is missing in environment variables");
     }
 
-    if (mongoose.connection.readyState === 0) {
-      await mongoose.connect(process.env.MONGO_URI);
-    }
+    // Start a real worker so tests don’t depend on `npm run dev:worker`.
+    worker = await createTestWorker();
   });
 
   afterEach(async () => {
@@ -68,11 +71,31 @@ describe("BullMQ Notification Queue Integration Tests", () => {
   });
 
   afterAll(async () => {
+    // Stop worker first and wait for it to fully shut down
+    if (worker) {
+      await worker.close();
+    }
+
+    // Now it is safe to clean and disconnect
     await NotificationModel.deleteMany({});
 
-    await mongoose.connection.close();
+    try {
+      await notificationQueue.close?.();
+    } catch (e) {
+      // ignore shutdown race
+    }
 
-    await redisConnection.quit();
+    try {
+      await mongoose.connection.close();
+    } catch (e) {
+      // ignore shutdown race
+    }
+
+    try {
+      await redisConnection.quit();
+    } catch (e) {
+      // ignore shutdown race
+    }
   });
 
   test("should enqueue a job and reach 'sent' status on success", async () => {
